@@ -1,0 +1,7 @@
+bin/
+obj/
+publish/
+*.zip
+*.user
+.DS_Store
+appsettings.Production.json
