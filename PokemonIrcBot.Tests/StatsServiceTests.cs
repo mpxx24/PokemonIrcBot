@@ -203,4 +203,114 @@ public class StatsServiceTests
         Assert.That(alice!.Wins, Is.EqualTo(3));
         Assert.That(alice.Battles, Is.EqualTo(5));
     }
+
+    // --- Pokemon stats tests ---
+
+    [Test]
+    public void GetPokemonStats_UnknownName_ReturnsNull()
+    {
+        var result = _sut.GetPokemonStats("missingno");
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task RecordResult_Win_UpdatesWinnerPokemonStats()
+    {
+        var result = new BattleResult("alice", "bob", "bulbasaur", "charmander", "alice", "bob", false, []);
+
+        await _sut.RecordResultAsync(result);
+
+        var bulba = _sut.GetPokemonStats("bulbasaur");
+        Assert.That(bulba, Is.Not.Null);
+        Assert.That(bulba!.Wins, Is.EqualTo(1));
+        Assert.That(bulba.Losses, Is.EqualTo(0));
+        Assert.That(bulba.Draws, Is.EqualTo(0));
+        Assert.That(bulba.Battles, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task RecordResult_Win_UpdatesLoserPokemonStats()
+    {
+        var result = new BattleResult("alice", "bob", "bulbasaur", "charmander", "alice", "bob", false, []);
+
+        await _sut.RecordResultAsync(result);
+
+        var charm = _sut.GetPokemonStats("charmander");
+        Assert.That(charm, Is.Not.Null);
+        Assert.That(charm!.Losses, Is.EqualTo(1));
+        Assert.That(charm.Wins, Is.EqualTo(0));
+        Assert.That(charm.Battles, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task RecordResult_Draw_UpdatesDrawForBothPokemon()
+    {
+        var result = new BattleResult("alice", "bob", "bulbasaur", "charmander", null, null, true, []);
+
+        await _sut.RecordResultAsync(result);
+
+        var bulba = _sut.GetPokemonStats("bulbasaur");
+        var charm = _sut.GetPokemonStats("charmander");
+        Assert.That(bulba!.Draws, Is.EqualTo(1));
+        Assert.That(bulba.Wins, Is.EqualTo(0));
+        Assert.That(charm!.Draws, Is.EqualTo(1));
+        Assert.That(charm.Wins, Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task RecordResult_Win_IncrementsWinnerPokemonStreak()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "bulbasaur", "charmander", "alice", "bob", false, []));
+
+        var bulba = _sut.GetPokemonStats("bulbasaur");
+        Assert.That(bulba!.CurrentStreak, Is.EqualTo(1));
+        Assert.That(bulba.BestStreak, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task RecordResult_ConsecutivePokemonWins_AccumulatesStreak()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "bulbasaur", "charmander", "alice", "bob", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "carol", "bulbasaur", "squirtle", "alice", "carol", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "dave", "bulbasaur", "pidgey", "alice", "dave", false, []));
+
+        var bulba = _sut.GetPokemonStats("bulbasaur");
+        Assert.That(bulba!.CurrentStreak, Is.EqualTo(3));
+        Assert.That(bulba.BestStreak, Is.EqualTo(3));
+    }
+
+    [Test]
+    public async Task RecordResult_PokemonLoss_ResetsStreak()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "bulbasaur", "charmander", "alice", "bob", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "bulbasaur", "charmander", "alice", "bob", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "bulbasaur", "charmander", "bob", "alice", false, []));
+
+        var bulba = _sut.GetPokemonStats("bulbasaur");
+        Assert.That(bulba!.CurrentStreak, Is.EqualTo(0));
+        Assert.That(bulba.BestStreak, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task RecordResult_PokemonDraw_ResetsStreak()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "bulbasaur", "charmander", "alice", "bob", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "bulbasaur", "charmander", null, null, true, []));
+
+        var bulba = _sut.GetPokemonStats("bulbasaur");
+        Assert.That(bulba!.CurrentStreak, Is.EqualTo(0));
+        Assert.That(bulba.BestStreak, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task GetAllPokemonStats_ReturnsAllPokemon()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "bulbasaur", "charmander", "alice", "bob", false, []));
+        await _sut.RecordResultAsync(new BattleResult("carol", "bob", "squirtle", "charmander", "carol", "bob", false, []));
+
+        var all = _sut.GetAllPokemonStats();
+
+        Assert.That(all.Count, Is.EqualTo(3));
+        Assert.That(all.Select(p => p.Name), Does.Contain("bulbasaur").And.Contain("charmander").And.Contain("squirtle"));
+    }
 }

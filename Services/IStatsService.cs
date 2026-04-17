@@ -8,4 +8,6 @@ public interface IStatsService
     Task RecordResultAsync(BattleResult result, CancellationToken ct = default);
     UserStats? GetUserStats(string nick);
     IReadOnlyList<UserStats> GetAllStats();
+    PokemonStats? GetPokemonStats(string name);
+    IReadOnlyList<PokemonStats> GetAllPokemonStats();
 }

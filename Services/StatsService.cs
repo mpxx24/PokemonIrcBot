@@ -57,6 +57,15 @@ public class StatsService : IStatsService
                 t.Draws++;
                 c.CurrentStreak = 0;
                 t.CurrentStreak = 0;
+
+                var cp = EnsurePokemon(result.ChallengerPokemon);
+                var tp = EnsurePokemon(result.TargetPokemon);
+                cp.Draws++;
+                tp.Draws++;
+                cp.Battles++;
+                tp.Battles++;
+                cp.CurrentStreak = 0;
+                tp.CurrentStreak = 0;
             }
             else
             {
@@ -68,6 +77,24 @@ public class StatsService : IStatsService
                 if (winner.CurrentStreak > winner.BestStreak)
                     winner.BestStreak = winner.CurrentStreak;
                 loser.CurrentStreak = 0;
+
+                var winnerPokemon = result.Winner == result.Challenger
+                    ? result.ChallengerPokemon
+                    : result.TargetPokemon;
+                var loserPokemon = result.Winner == result.Challenger
+                    ? result.TargetPokemon
+                    : result.ChallengerPokemon;
+
+                var wp = EnsurePokemon(winnerPokemon);
+                var lp = EnsurePokemon(loserPokemon);
+                wp.Wins++;
+                lp.Losses++;
+                wp.Battles++;
+                lp.Battles++;
+                wp.CurrentStreak++;
+                if (wp.CurrentStreak > wp.BestStreak)
+                    wp.BestStreak = wp.CurrentStreak;
+                lp.CurrentStreak = 0;
             }
 
             Ensure(result.Challenger).Battles++;
@@ -90,6 +117,15 @@ public class StatsService : IStatsService
     public IReadOnlyList<UserStats> GetAllStats() =>
         _current.Users.Values.OrderByDescending(u => u.Wins).ToList();
 
+    public PokemonStats? GetPokemonStats(string name)
+    {
+        _current.Pokemon.TryGetValue(name.ToLowerInvariant(), out var stats);
+        return stats;
+    }
+
+    public IReadOnlyList<PokemonStats> GetAllPokemonStats() =>
+        _current.Pokemon.Values.OrderByDescending(p => p.Wins).ToList();
+
     private UserStats Ensure(string nick)
     {
         var key = nick.ToLowerInvariant();
@@ -97,6 +133,17 @@ public class StatsService : IStatsService
         {
             stats = new UserStats { Nick = nick };
             _current.Users[key] = stats;
+        }
+        return stats;
+    }
+
+    private PokemonStats EnsurePokemon(string name)
+    {
+        var key = name.ToLowerInvariant();
+        if (!_current.Pokemon.TryGetValue(key, out var stats))
+        {
+            stats = new PokemonStats { Name = name };
+            _current.Pokemon[key] = stats;
         }
         return stats;
     }

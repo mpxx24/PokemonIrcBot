@@ -7,4 +7,5 @@ public class SeasonStats
     public List<int> Generations { get; set; } = [];
     public DateTime StartedAt { get; set; }
     public Dictionary<string, UserStats> Users { get; set; } = [];
+    public Dictionary<string, PokemonStats> Pokemon { get; set; } = [];
 }

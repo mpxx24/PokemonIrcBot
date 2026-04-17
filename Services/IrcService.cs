@@ -242,6 +242,20 @@ public class IrcService : BackgroundService
                 await HandleStandingsAsync(ct);
                 break;
 
+            case "!pokestats":
+                var pokeName = parts.Length >= 2 ? parts[1] : null;
+                if (pokeName is null)
+                {
+                    await SayAsync($"{sender}: Usage: !pokestats <pokemon>", ct);
+                    return;
+                }
+                await HandlePokeStatsAsync(pokeName, ct);
+                break;
+
+            case "!pokestandings":
+                await HandlePokeStandingsAsync(ct);
+                break;
+
             case "!help":
                 await HandleHelpAsync(ct);
                 break;
@@ -444,9 +458,50 @@ public class IrcService : BackgroundService
         }
     }
 
+    private async Task HandlePokeStatsAsync(string name, CancellationToken ct)
+    {
+        var stats = _stats.GetPokemonStats(name);
+        if (stats is null)
+        {
+            await SayAsync($"No stats found for {Capitalise(name)} this season.", ct);
+            return;
+        }
+
+        var winRate = stats.Battles > 0
+            ? (int)(stats.Wins * 100.0 / stats.Battles)
+            : 0;
+
+        var streak = stats.CurrentStreak > 0 ? $" | Streak: {stats.CurrentStreak}W" : string.Empty;
+
+        await SayAsync(
+            $"{Capitalise(stats.Name)} — Battles: {stats.Battles} | W:{stats.Wins} L:{stats.Losses} D:{stats.Draws} | {winRate}% wins{streak} | Best: {stats.BestStreak}W",
+            ct);
+    }
+
+    private async Task HandlePokeStandingsAsync(CancellationToken ct)
+    {
+        var all = _stats.GetAllPokemonStats();
+        if (all.Count == 0)
+        {
+            await SayAsync("No Pokemon battles recorded this season yet.", ct);
+            return;
+        }
+
+        await SayAsync("=== Pokemon Standings ===", ct);
+        int pos = 1;
+        foreach (var p in all.Take(10))
+        {
+            var winRate = p.Battles > 0 ? (int)(p.Wins * 100.0 / p.Battles) : 0;
+            await SayAsync(
+                $"#{pos} {Capitalise(p.Name)} — W:{p.Wins} L:{p.Losses} D:{p.Draws} ({winRate}% wins) | Best streak: {p.BestStreak}W",
+                ct);
+            pos++;
+        }
+    }
+
     private async Task HandleHelpAsync(CancellationToken ct)
     {
-        await SayAsync("Commands: !battle <nick> | !stats [nick] | !standings | !help", ct);
+        await SayAsync("Commands: !battle <nick> | !stats [nick] | !standings | !pokestats <pokemon> | !pokestandings | !help", ct);
     }
 
     private async Task SayAsync(string message, CancellationToken ct) =>
