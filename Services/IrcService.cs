@@ -338,7 +338,6 @@ public class IrcService : BackgroundService
                 {
                     var ready = DateTimeOffset.UtcNow.AddSeconds(_irc.BattleCooldownSeconds);
                     _cooldowns[challenger.ToLowerInvariant()] = ready;
-                    _cooldowns[target.ToLowerInvariant()] = ready;
                 }
             }
             finally
