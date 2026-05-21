@@ -355,8 +355,12 @@ public class IrcService : BackgroundService
         var chalTypes = FormatTypes(result.ChallengerTypes);
         var targTypes = FormatTypes(result.TargetTypes);
 
+        var pokeStandings = _stats.GetAllPokemonStats();
+        var chalTag = FormatPokeTag(result.ChallengerPokemon, pokeStandings);
+        var targTag = FormatPokeTag(result.TargetPokemon, pokeStandings);
+
         await SayAsync(
-            $"{result.Challenger} chose {challengerPokemon}{chalTypes} | {result.Target} chose {targetPokemon}{targTypes}",
+            $"{result.Challenger} chose {challengerPokemon}{chalTypes}{chalTag} | {result.Target} chose {targetPokemon}{targTypes}{targTag}",
             ct);
 
         foreach (var round in result.Rounds)
@@ -404,6 +408,28 @@ public class IrcService : BackgroundService
         4.0  => " [Super effective! 4×]",
         _    => string.Empty,
     };
+
+    internal static string FormatPokeTag(string name, IReadOnlyList<PokemonStats> allStats)
+    {
+        int rank = -1;
+        bool undefeated = false;
+
+        for (int i = 0; i < allStats.Count; i++)
+        {
+            var s = allStats[i];
+            if (!string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (i < 10 && s.Battles > 0) rank = i + 1;
+            undefeated = s.Battles > 0 && s.Losses == 0;
+            break;
+        }
+
+        if (rank < 0 && !undefeated) return "";
+        if (rank >= 0 && undefeated) return $" [#{rank} UNDEFEATED]";
+        if (rank >= 0) return $" [#{rank}]";
+        return " [UNDEFEATED]";
+    }
 
     private static string GetRank(int wins) => wins switch
     {
