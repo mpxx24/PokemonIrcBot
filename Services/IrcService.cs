@@ -22,6 +22,7 @@ public class IrcService : BackgroundService
     private readonly HashSet<string> _activeBattlers = [];
     private readonly Dictionary<string, DateTimeOffset> _cooldowns = [];
     private readonly SemaphoreSlim _battleLock = new(1, 1);
+    private readonly HashSet<string> _onlineNicks = new(StringComparer.OrdinalIgnoreCase);
 
     public IrcService(
         IrcOptions irc,
@@ -79,6 +80,7 @@ public class IrcService : BackgroundService
     private async Task ConnectAndRunAsync(CancellationToken ct)
     {
         _pendingNickClaim = false;
+        _onlineNicks.Clear();
         using var tcpClient = new TcpClient();
         await tcpClient.ConnectAsync(_irc.Host, _irc.Port, ct);
 
@@ -205,6 +207,38 @@ public class IrcService : BackgroundService
                 }
                 break;
 
+            case "353": // RPL_NAMREPLY — initial nick list when joining
+                if (trailing is not null)
+                    TrackNamesListNicks(trailing);
+                break;
+
+            case "JOIN":
+                var joiner = ExtractNick(prefix);
+                if (joiner is not null)
+                    TrackNickJoined(joiner);
+                break;
+
+            case "PART":
+            case "QUIT":
+                var leaver = ExtractNick(prefix);
+                if (leaver is not null)
+                    TrackNickLeft(leaver);
+                break;
+
+            case "KICK":
+                // KICK #channel kicked_nick :reason
+                var kicked = parameters.ElementAtOrDefault(1);
+                if (kicked is not null)
+                    TrackNickLeft(kicked);
+                break;
+
+            case "NICK":
+                var oldNick = ExtractNick(prefix);
+                var newNick = trailing ?? parameters.FirstOrDefault();
+                if (oldNick is not null && newNick is not null)
+                    TrackNickRenamed(oldNick, newNick);
+                break;
+
             case "PRIVMSG":
                 var target = parameters.FirstOrDefault();
                 var senderNick = ExtractNick(prefix);
@@ -267,6 +301,12 @@ public class IrcService : BackgroundService
         if (string.Equals(challenger, target, StringComparison.OrdinalIgnoreCase))
         {
             await SayAsync($"{challenger}: You can't battle yourself!", ct);
+            return;
+        }
+
+        if (!_onlineNicks.Contains(target))
+        {
+            await SayAsync($"{challenger}: {target} is not in the channel.", ct);
             return;
         }
 
@@ -431,13 +471,13 @@ public class IrcService : BackgroundService
         return " [UNDEFEATED]";
     }
 
-    private static string GetRank(int wins) => wins switch
+    private static string GetRank(int elo) => elo switch
     {
-        < 5  => "Youngster",
-        < 15 => "Bug Catcher",
-        < 30 => "Gym Trainer",
-        < 50 => "Gym Leader",
-        _    => "Elite Four",
+        < 950  => "Youngster",
+        < 1050 => "Bug Catcher",
+        < 1150 => "Gym Trainer",
+        < 1300 => "Gym Leader",
+        _      => "Elite Four",
     };
 
     private async Task HandleStatsAsync(string nick, CancellationToken ct)
@@ -453,17 +493,17 @@ public class IrcService : BackgroundService
             ? (int)(stats.Wins * 100.0 / stats.Battles)
             : 0;
 
-        var rank   = GetRank(stats.Wins);
+        var rank   = GetRank(stats.Elo);
         var streak = stats.CurrentStreak > 0 ? $" | Streak: {stats.CurrentStreak}W" : string.Empty;
 
         await SayAsync(
-            $"{stats.Nick} [{rank}] — Battles: {stats.Battles} | W:{stats.Wins} L:{stats.Losses} D:{stats.Draws} | {winRate}% wins{streak} | Best: {stats.BestStreak}W",
+            $"{stats.Nick} [{rank}] ELO:{stats.Elo} — Battles: {stats.Battles} | W:{stats.Wins} L:{stats.Losses} D:{stats.Draws} | {winRate}% wins{streak} | Best: {stats.BestStreak}W",
             ct);
     }
 
     private async Task HandleStandingsAsync(CancellationToken ct)
     {
-        var all = _stats.GetAllStats();
+        var all = _stats.GetAllStats(minBattles: 5);
         if (all.Count == 0)
         {
             await SayAsync("No battles recorded this season yet.", ct);
@@ -475,9 +515,9 @@ public class IrcService : BackgroundService
         foreach (var u in all.Take(10))
         {
             var winRate = u.Battles > 0 ? (int)(u.Wins * 100.0 / u.Battles) : 0;
-            var rank    = GetRank(u.Wins);
+            var rank    = GetRank(u.Elo);
             await SayAsync(
-                $"#{pos} {u.Nick} [{rank}] — W:{u.Wins} L:{u.Losses} D:{u.Draws} ({winRate}% wins) | Best streak: {u.BestStreak}W",
+                $"#{pos} {u.Nick} [{rank}] ELO:{u.Elo} — W:{u.Wins} L:{u.Losses} D:{u.Draws} ({winRate}% wins) | Best streak: {u.BestStreak}W",
                 ct);
             pos++;
         }
@@ -563,6 +603,35 @@ public class IrcService : BackgroundService
 
     private static string? ExtractNick(string? prefix) =>
         prefix?.Split('!')[0];
+
+    // ── Online-nick tracking ────────────────────────────────────────────────
+
+    /// <summary>Strips IRC mode prefixes (@, +, %, &amp;, ~) from each entry in a 353 RPL_NAMREPLY trailing.</summary>
+    internal static string[] ParseNamesListNicks(string trailing) =>
+        trailing.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(n => n.TrimStart('@', '+', '%', '&', '~'))
+                .Where(n => n.Length > 0)
+                .ToArray();
+
+    internal bool IsNickOnline(string nick) => _onlineNicks.Contains(nick);
+
+    internal void TrackNickJoined(string nick) => _onlineNicks.Add(nick);
+
+    internal void TrackNickLeft(string nick) => _onlineNicks.Remove(nick);
+
+    internal void TrackNickRenamed(string oldNick, string newNick)
+    {
+        _onlineNicks.Remove(oldNick);
+        _onlineNicks.Add(newNick);
+    }
+
+    internal void TrackNamesListNicks(string trailing)
+    {
+        foreach (var nick in ParseNamesListNicks(trailing))
+            _onlineNicks.Add(nick);
+    }
+
+    internal void ClearOnlineNicks() => _onlineNicks.Clear();
 
     private static string Capitalise(string s) =>
         string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s[1..];

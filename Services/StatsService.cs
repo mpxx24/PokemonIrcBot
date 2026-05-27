@@ -27,6 +27,7 @@ public class StatsService : IStatsService
         if (existing is not null)
         {
             _current = existing;
+            SeedEloIfNeeded();
             _logger.LogInformation(
                 "Loaded season {SeasonId} with {Count} users",
                 _season.Id, _current.Users.Count);
@@ -53,10 +54,14 @@ public class StatsService : IStatsService
             {
                 var c = Ensure(result.Challenger);
                 var t = Ensure(result.Target);
+                var cElo = c.Elo;
+                var tElo = t.Elo;
                 c.Draws++;
                 t.Draws++;
                 c.CurrentStreak = 0;
                 t.CurrentStreak = 0;
+                c.Elo = ComputeNewElo(cElo, tElo, 0.5);
+                t.Elo = ComputeNewElo(tElo, cElo, 0.5);
 
                 var cp = EnsurePokemon(result.ChallengerPokemon);
                 var tp = EnsurePokemon(result.TargetPokemon);
@@ -71,12 +76,16 @@ public class StatsService : IStatsService
             {
                 var winner = Ensure(result.Winner!);
                 var loser  = Ensure(result.Loser!);
+                var winnerElo = winner.Elo;
+                var loserElo  = loser.Elo;
                 winner.Wins++;
                 loser.Losses++;
                 winner.CurrentStreak++;
                 if (winner.CurrentStreak > winner.BestStreak)
                     winner.BestStreak = winner.CurrentStreak;
                 loser.CurrentStreak = 0;
+                winner.Elo = ComputeNewElo(winnerElo, loserElo, 1.0);
+                loser.Elo  = ComputeNewElo(loserElo, winnerElo, 0.0);
 
                 var winnerPokemon = result.Winner == result.Challenger
                     ? result.ChallengerPokemon
@@ -114,8 +123,11 @@ public class StatsService : IStatsService
         return stats;
     }
 
-    public IReadOnlyList<UserStats> GetAllStats() =>
-        _current.Users.Values.OrderByDescending(u => u.Wins).ToList();
+    public IReadOnlyList<UserStats> GetAllStats(int minBattles = 0) =>
+        _current.Users.Values
+            .Where(u => u.Battles >= minBattles)
+            .OrderByDescending(u => u.Elo)
+            .ToList();
 
     public PokemonStats? GetPokemonStats(string name)
     {
@@ -131,7 +143,7 @@ public class StatsService : IStatsService
         var key = nick.ToLowerInvariant();
         if (!_current.Users.TryGetValue(key, out var stats))
         {
-            stats = new UserStats { Nick = nick };
+            stats = new UserStats { Nick = nick, Elo = 1000 };
             _current.Users[key] = stats;
         }
         return stats;
@@ -146,5 +158,39 @@ public class StatsService : IStatsService
             _current.Pokemon[key] = stats;
         }
         return stats;
+    }
+
+    private static int ComputeNewElo(int myElo, int opponentElo, double score)
+    {
+        const int K = 32;
+        var expected = 1.0 / (1.0 + Math.Pow(10.0, (opponentElo - myElo) / 400.0));
+        return (int)Math.Round(myElo + K * (score - expected));
+    }
+
+    private void SeedEloIfNeeded()
+    {
+        var needsSeeding = _current.Users.Values.Where(u => u.Elo == 0).ToList();
+        if (needsSeeding.Count == 0) return;
+
+        var withBattles = needsSeeding.Where(u => u.Battles > 0).ToList();
+        if (withBattles.Count == 0)
+        {
+            foreach (var u in needsSeeding) u.Elo = 1000;
+            return;
+        }
+
+        var minRate = withBattles.Min(u => (double)u.Wins / u.Battles);
+        var maxRate = withBattles.Max(u => (double)u.Wins / u.Battles);
+
+        foreach (var u in needsSeeding)
+        {
+            if (u.Battles == 0) { u.Elo = 1000; continue; }
+
+            var rate = (double)u.Wins / u.Battles;
+            var normalized = maxRate > minRate
+                ? (rate - minRate) / (maxRate - minRate) - 0.5
+                : 0.0;
+            u.Elo = (int)Math.Round(1000 + normalized * 64);
+        }
     }
 }
