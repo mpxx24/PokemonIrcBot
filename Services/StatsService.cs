@@ -45,11 +45,13 @@ public class StatsService : IStatsService
         }
     }
 
-    public async Task RecordResultAsync(BattleResult result, CancellationToken ct = default)
+    public async Task<(int ChallengerDelta, int TargetDelta)> RecordResultAsync(BattleResult result, CancellationToken ct = default)
     {
         await _lock.WaitAsync(ct);
         try
         {
+            int challengerDelta, targetDelta;
+
             if (result.IsDraw)
             {
                 var c = Ensure(result.Challenger);
@@ -62,6 +64,8 @@ public class StatsService : IStatsService
                 t.CurrentStreak = 0;
                 c.Elo = ComputeNewElo(cElo, tElo, 0.5);
                 t.Elo = ComputeNewElo(tElo, cElo, 0.5);
+                challengerDelta = c.Elo - cElo;
+                targetDelta     = t.Elo - tElo;
 
                 var cp = EnsurePokemon(result.ChallengerPokemon);
                 var tp = EnsurePokemon(result.TargetPokemon);
@@ -87,6 +91,11 @@ public class StatsService : IStatsService
                 winner.Elo = ComputeNewElo(winnerElo, loserElo, 1.0);
                 loser.Elo  = ComputeNewElo(loserElo, winnerElo, 0.0);
 
+                var winnerDelta = winner.Elo - winnerElo;
+                var loserDelta  = loser.Elo - loserElo;
+                challengerDelta = result.Winner == result.Challenger ? winnerDelta : loserDelta;
+                targetDelta     = result.Winner == result.Target     ? winnerDelta : loserDelta;
+
                 var winnerPokemon = result.Winner == result.Challenger
                     ? result.ChallengerPokemon
                     : result.TargetPokemon;
@@ -110,6 +119,8 @@ public class StatsService : IStatsService
             Ensure(result.Target).Battles++;
 
             await _storage.SaveAsync(_current, ct);
+
+            return (challengerDelta, targetDelta);
         }
         finally
         {

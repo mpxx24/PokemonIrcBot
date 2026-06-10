@@ -351,7 +351,8 @@ public class IrcService : BackgroundService
             var result = await _battles.FightAsync(challenger, target, ct);
 
             await AnnounceResultAsync(result, ct);
-            await _stats.RecordResultAsync(result, ct);
+            var (chalDelta, targDelta) = await _stats.RecordResultAsync(result, ct);
+            await AnnounceEloChangesAsync(result.Challenger, chalDelta, result.Target, targDelta, ct);
 
             _telemetry.TrackEvent("BattleCompleted", new Dictionary<string, string>
             {
@@ -431,6 +432,13 @@ public class IrcService : BackgroundService
                 $"{result.Winner} wins! {Capitalise(winnerPokemon)} defeated {Capitalise(loserPokemon)}.",
                 ct);
         }
+    }
+
+    private async Task AnnounceEloChangesAsync(string challenger, int chalDelta, string target, int targDelta, CancellationToken ct)
+    {
+        var chalSign = chalDelta >= 0 ? "+" : string.Empty;
+        var targSign = targDelta >= 0 ? "+" : string.Empty;
+        await SayAsync($"ELO: {challenger} {chalSign}{chalDelta} | {target} {targSign}{targDelta}", ct);
     }
 
     private static string FormatMoveName(string name) =>

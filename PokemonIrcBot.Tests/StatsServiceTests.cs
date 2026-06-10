@@ -532,6 +532,71 @@ public class StatsServiceTests
         Assert.That(sut.GetUserStats("alice")!.Elo, Is.EqualTo(1200));
     }
 
+    // --- ELO delta return tests ---
+
+    [Test]
+    public async Task RecordResult_Win_ReturnsChallengerPositiveDeltaWhenChallengerWins()
+    {
+        var result = new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []);
+
+        var (challengerDelta, _) = await _sut.RecordResultAsync(result);
+
+        Assert.That(challengerDelta, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public async Task RecordResult_Win_ReturnsChallengerNegativeDeltaWhenTargetWins()
+    {
+        var result = new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []);
+
+        var (challengerDelta, _) = await _sut.RecordResultAsync(result);
+
+        Assert.That(challengerDelta, Is.LessThan(0));
+    }
+
+    [Test]
+    public async Task RecordResult_Win_ReturnsTargetNegativeDeltaWhenChallengerWins()
+    {
+        var result = new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []);
+
+        var (_, targetDelta) = await _sut.RecordResultAsync(result);
+
+        Assert.That(targetDelta, Is.LessThan(0));
+    }
+
+    [Test]
+    public async Task RecordResult_Win_EqualPlayers_ReturnsSixteenForWinner()
+    {
+        var result = new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []);
+
+        var (challengerDelta, targetDelta) = await _sut.RecordResultAsync(result);
+
+        Assert.That(challengerDelta, Is.EqualTo(16));
+        Assert.That(targetDelta, Is.EqualTo(-16));
+    }
+
+    [Test]
+    public async Task RecordResult_Draw_EqualPlayers_ReturnsBothZero()
+    {
+        var result = new BattleResult("alice", "bob", "p1", "p2", null, null, true, []);
+
+        var (challengerDelta, targetDelta) = await _sut.RecordResultAsync(result);
+
+        Assert.That(challengerDelta, Is.EqualTo(0));
+        Assert.That(targetDelta, Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task RecordResult_Win_DeltaMatchesEloChange()
+    {
+        var result = new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []);
+
+        var (challengerDelta, targetDelta) = await _sut.RecordResultAsync(result);
+
+        Assert.That(_sut.GetUserStats("alice")!.Elo, Is.EqualTo(1000 + challengerDelta));
+        Assert.That(_sut.GetUserStats("bob")!.Elo, Is.EqualTo(1000 + targetDelta));
+    }
+
     // --- minBattles filter tests ---
 
     [Test]
