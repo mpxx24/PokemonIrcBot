@@ -178,6 +178,82 @@ public class StatsServiceTests
     }
 
     [Test]
+    public async Task RecordResult_Loss_IncrementsCurrentLossStreak()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+
+        var alice = _sut.GetUserStats("alice");
+        Assert.That(alice!.CurrentLossStreak, Is.EqualTo(1));
+        Assert.That(alice.WorstLossStreak, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task RecordResult_ConsecutiveLosses_AccumulatesLossStreak()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "carol", "p1", "p2", "carol", "alice", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "dave", "p1", "p2", "dave", "alice", false, []));
+
+        var alice = _sut.GetUserStats("alice");
+        Assert.That(alice!.CurrentLossStreak, Is.EqualTo(3));
+        Assert.That(alice.WorstLossStreak, Is.EqualTo(3));
+    }
+
+    [Test]
+    public async Task RecordResult_WinResetsCurrentLossStreak()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []));
+
+        var alice = _sut.GetUserStats("alice");
+        Assert.That(alice!.CurrentLossStreak, Is.EqualTo(0));
+        Assert.That(alice.WorstLossStreak, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task RecordResult_DrawResetsCurrentLossStreak()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", null, null, true, []));
+
+        var alice = _sut.GetUserStats("alice");
+        Assert.That(alice!.CurrentLossStreak, Is.EqualTo(0));
+        Assert.That(alice.WorstLossStreak, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task RecordResult_WorstLossStreak_NeverDecreasesAfterWin()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+        // Now 3-loss streak; take a win
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []));
+        // New loss — streak = 1, worst should still be 3
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+
+        var alice = _sut.GetUserStats("alice");
+        Assert.That(alice!.CurrentLossStreak, Is.EqualTo(1));
+        Assert.That(alice.WorstLossStreak, Is.EqualTo(3));
+    }
+
+    [Test]
+    public async Task RecordResult_WinAndLossStreaks_AreIndependent()
+    {
+        // Win streak of 2, then a loss should reset win streak but start loss streak
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+
+        var alice = _sut.GetUserStats("alice");
+        Assert.That(alice!.CurrentStreak, Is.EqualTo(0));
+        Assert.That(alice.BestStreak, Is.EqualTo(2));
+        Assert.That(alice.CurrentLossStreak, Is.EqualTo(1));
+        Assert.That(alice.WorstLossStreak, Is.EqualTo(1));
+    }
+
+    [Test]
     public async Task LoadAsync_ExistingStats_RestoresUsers()
     {
         var existingStats = new SeasonStats

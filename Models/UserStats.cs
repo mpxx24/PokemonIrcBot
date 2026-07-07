@@ -9,5 +9,7 @@ public class UserStats
     public int Draws { get; set; }
     public int CurrentStreak { get; set; }
     public int BestStreak { get; set; }
+    public int CurrentLossStreak { get; set; }
+    public int WorstLossStreak { get; set; }
     public int Elo { get; set; } = 0; // 0 = not yet seeded; new players get 1000 in Ensure()
 }

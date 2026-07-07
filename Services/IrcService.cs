@@ -502,10 +502,12 @@ public class IrcService : BackgroundService
             : 0;
 
         var rank   = GetRank(stats.Elo);
-        var streak = stats.CurrentStreak > 0 ? $" | Streak: {stats.CurrentStreak}W" : string.Empty;
+        var streak = stats.CurrentStreak > 0
+            ? $" | Streak: {stats.CurrentStreak}W"
+            : stats.CurrentLossStreak > 0 ? $" | Streak: {stats.CurrentLossStreak}L" : string.Empty;
 
         await SayAsync(
-            $"{stats.Nick} [{rank}] ELO:{stats.Elo} — Battles: {stats.Battles} | W:{stats.Wins} L:{stats.Losses} D:{stats.Draws} | {winRate}% wins{streak} | Best: {stats.BestStreak}W",
+            $"{stats.Nick} [{rank}] ELO:{stats.Elo} — Battles: {stats.Battles} | W:{stats.Wins} L:{stats.Losses} D:{stats.Draws} | {winRate}% wins{streak} | Best: {stats.BestStreak}W | Worst: {stats.WorstLossStreak}L",
             ct);
     }
 
@@ -525,7 +527,7 @@ public class IrcService : BackgroundService
             var winRate = u.Battles > 0 ? (int)(u.Wins * 100.0 / u.Battles) : 0;
             var rank    = GetRank(u.Elo);
             await SayAsync(
-                $"#{pos} {u.Nick} [{rank}] ELO:{u.Elo} — W:{u.Wins} L:{u.Losses} D:{u.Draws} ({winRate}% wins) | Best streak: {u.BestStreak}W",
+                $"#{pos} {u.Nick} [{rank}] ELO:{u.Elo} — W:{u.Wins} L:{u.Losses} D:{u.Draws} ({winRate}% wins) | Best streak: {u.BestStreak}W | Worst: {u.WorstLossStreak}L",
                 ct);
             pos++;
         }

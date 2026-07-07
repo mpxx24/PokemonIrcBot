@@ -62,6 +62,8 @@ public class StatsService : IStatsService
                 t.Draws++;
                 c.CurrentStreak = 0;
                 t.CurrentStreak = 0;
+                c.CurrentLossStreak = 0;
+                t.CurrentLossStreak = 0;
                 c.Elo = ComputeNewElo(cElo, tElo, 0.5);
                 t.Elo = ComputeNewElo(tElo, cElo, 0.5);
                 challengerDelta = c.Elo - cElo;
@@ -87,7 +89,11 @@ public class StatsService : IStatsService
                 winner.CurrentStreak++;
                 if (winner.CurrentStreak > winner.BestStreak)
                     winner.BestStreak = winner.CurrentStreak;
+                winner.CurrentLossStreak = 0;
                 loser.CurrentStreak = 0;
+                loser.CurrentLossStreak++;
+                if (loser.CurrentLossStreak > loser.WorstLossStreak)
+                    loser.WorstLossStreak = loser.CurrentLossStreak;
                 winner.Elo = ComputeNewElo(winnerElo, loserElo, 1.0);
                 loser.Elo  = ComputeNewElo(loserElo, winnerElo, 0.0);
 
