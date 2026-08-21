@@ -782,6 +782,33 @@ public class StatsServiceTests
         Assert.That(alice.TroughElo, Is.EqualTo(1034));
     }
 
+    [Test]
+    public async Task LoadAsync_LegacyUserWithPeakAlreadyTracked_StillBackfillsTroughOnly()
+    {
+        // Simulates a legacy user whose PeakElo already got corrected by a post-fix battle
+        // (0 loses to any real Elo on the first update), but TroughElo is still stuck at 0
+        // because 0 can never be beaten as a low. The old "both must be zero" backfill check
+        // would skip this user entirely — it must backfill TroughElo without touching PeakElo.
+        var legacy = new SeasonStats
+        {
+            SeasonId = "season-1",
+            SeasonName = "Spring 2026",
+            Generations = [1, 2],
+            StartedAt = DateTime.UtcNow,
+            Users = new Dictionary<string, UserStats>
+            {
+                ["alice"] = new UserStats { Nick = "alice", Battles = 5, Wins = 3, Losses = 2, Elo = 1034, PeakElo = 1200, TroughElo = 0 },
+            }
+        };
+        _storageMock.Setup(s => s.LoadAsync("season-1", It.IsAny<CancellationToken>())).ReturnsAsync(legacy);
+        var sut = new StatsService(_storageMock.Object, _season, NullLogger<StatsService>.Instance);
+        await sut.LoadAsync();
+
+        var alice = sut.GetUserStats("alice")!;
+        Assert.That(alice.PeakElo, Is.EqualTo(1200), "already-correct PeakElo must not be overwritten");
+        Assert.That(alice.TroughElo, Is.EqualTo(1034));
+    }
+
     // --- minBattles filter tests ---
 
     [Test]

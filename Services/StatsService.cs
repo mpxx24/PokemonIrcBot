@@ -188,17 +188,17 @@ public class StatsService : IStatsService
         if (u.Elo < u.TroughElo) u.TroughElo = u.Elo;
     }
 
-    // Data saved before PeakElo/TroughElo existed has both defaulted to 0 — seed them
-    // from the current Elo so "lowest ever" doesn't read as a bogus 0.
+    // Data saved before PeakElo/TroughElo existed has both defaulted to 0. Since 0 loses to
+    // any real Elo on the very first UpdateEloRecords call, PeakElo can silently "fix itself"
+    // after one battle while TroughElo (0 can never be beaten as a low) stays stuck at 0
+    // forever — so each field must be backfilled independently, not only when both are 0.
     private void BackfillEloRecordsIfNeeded()
     {
         foreach (var u in _current.Users.Values)
         {
-            if (u.PeakElo == 0 && u.TroughElo == 0 && u.Elo != 0)
-            {
-                u.PeakElo = u.Elo;
-                u.TroughElo = u.Elo;
-            }
+            if (u.Elo == 0) continue; // not yet seeded — SeedEloIfNeeded handles this case
+            if (u.PeakElo == 0) u.PeakElo = u.Elo;
+            if (u.TroughElo == 0) u.TroughElo = u.Elo;
         }
     }
 
