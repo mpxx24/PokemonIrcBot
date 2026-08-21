@@ -290,6 +290,18 @@ public class IrcService : BackgroundService
                 await HandlePokeStandingsAsync(ct);
                 break;
 
+            case "!elorecords":
+                await HandleEloRecordsAsync(ct);
+                break;
+
+            case "!undefeated":
+                await HandleUndefeatedAsync(ct);
+                break;
+
+            case "!pokerank":
+                await HandlePokeRankAsync(ct);
+                break;
+
             case "!help":
                 await HandleHelpAsync(ct);
                 break;
@@ -574,9 +586,55 @@ public class IrcService : BackgroundService
         }
     }
 
+    private async Task HandleEloRecordsAsync(CancellationToken ct)
+    {
+        var withBattles = _stats.GetAllStats().Where(u => u.Battles > 0).ToList();
+        if (withBattles.Count == 0)
+        {
+            await SayAsync("No ELO records yet — nobody has battled this season.", ct);
+            return;
+        }
+
+        var highest = withBattles.OrderByDescending(u => u.PeakElo).First();
+        var lowest = withBattles.OrderBy(u => u.TroughElo).First();
+
+        await SayAsync(
+            $"All-time ELO records: Highest {highest.Nick} {highest.PeakElo} | Lowest {lowest.Nick} {lowest.TroughElo}",
+            ct);
+    }
+
+    private async Task HandleUndefeatedAsync(CancellationToken ct)
+    {
+        var undefeated = _stats.GetAllPokemonStats()
+            .Where(p => p.Battles > 0 && p.Losses == 0)
+            .Select(p => Capitalise(p.Name))
+            .ToList();
+
+        if (undefeated.Count == 0)
+        {
+            await SayAsync("No undefeated Pokemon this season.", ct);
+            return;
+        }
+
+        await SayAsync($"Undefeated: {string.Join(", ", undefeated)}", ct);
+    }
+
+    private async Task HandlePokeRankAsync(CancellationToken ct)
+    {
+        var all = _stats.GetAllPokemonStats();
+        if (all.Count == 0)
+        {
+            await SayAsync("No Pokemon battles recorded this season yet.", ct);
+            return;
+        }
+
+        var line = string.Join(", ", all.Select((p, i) => $"{i + 1}. {Capitalise(p.Name)}"));
+        await SayAsync(line, ct);
+    }
+
     private async Task HandleHelpAsync(CancellationToken ct)
     {
-        await SayAsync("Commands: !battle <nick> | !stats [nick] | !standings | !pokestats <pokemon> | !pokestandings | !help", ct);
+        await SayAsync("Commands: !battle <nick> | !stats [nick] | !standings | !pokestats <pokemon> | !pokestandings | !elorecords | !undefeated | !pokerank | !help", ct);
     }
 
     private async Task SayAsync(string message, CancellationToken ct) =>

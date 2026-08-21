@@ -12,4 +12,6 @@ public class UserStats
     public int CurrentLossStreak { get; set; }
     public int WorstLossStreak { get; set; }
     public int Elo { get; set; } = 0; // 0 = not yet seeded; new players get 1000 in Ensure()
+    public int PeakElo { get; set; }
+    public int TroughElo { get; set; }
 }

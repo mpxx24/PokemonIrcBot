@@ -66,6 +66,8 @@ public class StatsService : IStatsService
                 t.CurrentLossStreak = 0;
                 c.Elo = ComputeNewElo(cElo, tElo, 0.5);
                 t.Elo = ComputeNewElo(tElo, cElo, 0.5);
+                UpdateEloRecords(c);
+                UpdateEloRecords(t);
                 challengerDelta = c.Elo - cElo;
                 targetDelta     = t.Elo - tElo;
 
@@ -96,6 +98,8 @@ public class StatsService : IStatsService
                     loser.WorstLossStreak = loser.CurrentLossStreak;
                 winner.Elo = ComputeNewElo(winnerElo, loserElo, 1.0);
                 loser.Elo  = ComputeNewElo(loserElo, winnerElo, 0.0);
+                UpdateEloRecords(winner);
+                UpdateEloRecords(loser);
 
                 var winnerDelta = winner.Elo - winnerElo;
                 var loserDelta  = loser.Elo - loserElo;
@@ -160,7 +164,7 @@ public class StatsService : IStatsService
         var key = nick.ToLowerInvariant();
         if (!_current.Users.TryGetValue(key, out var stats))
         {
-            stats = new UserStats { Nick = nick, Elo = 1000 };
+            stats = new UserStats { Nick = nick, Elo = 1000, PeakElo = 1000, TroughElo = 1000 };
             _current.Users[key] = stats;
         }
         return stats;
@@ -175,6 +179,12 @@ public class StatsService : IStatsService
             _current.Pokemon[key] = stats;
         }
         return stats;
+    }
+
+    private static void UpdateEloRecords(UserStats u)
+    {
+        if (u.Elo > u.PeakElo) u.PeakElo = u.Elo;
+        if (u.Elo < u.TroughElo) u.TroughElo = u.Elo;
     }
 
     private static int ComputeNewElo(int myElo, int opponentElo, double score)
@@ -192,7 +202,7 @@ public class StatsService : IStatsService
         var withBattles = needsSeeding.Where(u => u.Battles > 0).ToList();
         if (withBattles.Count == 0)
         {
-            foreach (var u in needsSeeding) u.Elo = 1000;
+            foreach (var u in needsSeeding) { u.Elo = 1000; u.PeakElo = 1000; u.TroughElo = 1000; }
             return;
         }
 
@@ -201,13 +211,15 @@ public class StatsService : IStatsService
 
         foreach (var u in needsSeeding)
         {
-            if (u.Battles == 0) { u.Elo = 1000; continue; }
+            if (u.Battles == 0) { u.Elo = 1000; u.PeakElo = 1000; u.TroughElo = 1000; continue; }
 
             var rate = (double)u.Wins / u.Battles;
             var normalized = maxRate > minRate
                 ? (rate - minRate) / (maxRate - minRate) - 0.5
                 : 0.0;
             u.Elo = (int)Math.Round(1000 + normalized * 64);
+            u.PeakElo = u.Elo;
+            u.TroughElo = u.Elo;
         }
     }
 }

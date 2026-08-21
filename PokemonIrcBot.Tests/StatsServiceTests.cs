@@ -673,6 +673,90 @@ public class StatsServiceTests
         Assert.That(_sut.GetUserStats("bob")!.Elo, Is.EqualTo(1000 + targetDelta));
     }
 
+    // --- ELO peak/trough record tests ---
+
+    [Test]
+    public async Task NewPlayer_PeakAndTroughEloStartAtSeedValue()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []));
+
+        // bob lost, so his Elo only ever moved down from the 1000 seed — Peak stays at the seed value
+        var bob = _sut.GetUserStats("bob")!;
+        Assert.That(bob.PeakElo, Is.EqualTo(1000));
+        Assert.That(bob.TroughElo, Is.EqualTo(bob.Elo));
+    }
+
+    [Test]
+    public async Task RecordResult_Win_UpdatesWinnerPeakElo()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []));
+
+        var alice = _sut.GetUserStats("alice")!;
+        Assert.That(alice.PeakElo, Is.EqualTo(alice.Elo));
+        Assert.That(alice.PeakElo, Is.GreaterThan(1000));
+    }
+
+    [Test]
+    public async Task RecordResult_Win_UpdatesLoserTroughElo()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []));
+
+        var bob = _sut.GetUserStats("bob")!;
+        Assert.That(bob.TroughElo, Is.EqualTo(bob.Elo));
+        Assert.That(bob.TroughElo, Is.LessThan(1000));
+    }
+
+    [Test]
+    public async Task RecordResult_PeakElo_NeverDecreasesAfterLoss()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []));
+        var peakAfterTwoWins = _sut.GetUserStats("alice")!.PeakElo;
+
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+
+        var alice = _sut.GetUserStats("alice")!;
+        Assert.That(alice.Elo, Is.LessThan(peakAfterTwoWins));
+        Assert.That(alice.PeakElo, Is.EqualTo(peakAfterTwoWins));
+    }
+
+    [Test]
+    public async Task RecordResult_TroughElo_NeverIncreasesAfterWin()
+    {
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "bob", "alice", false, []));
+        var troughAfterTwoLosses = _sut.GetUserStats("alice")!.TroughElo;
+
+        await _sut.RecordResultAsync(new BattleResult("alice", "bob", "p1", "p2", "alice", "bob", false, []));
+
+        var alice = _sut.GetUserStats("alice")!;
+        Assert.That(alice.Elo, Is.GreaterThan(troughAfterTwoLosses));
+        Assert.That(alice.TroughElo, Is.EqualTo(troughAfterTwoLosses));
+    }
+
+    [Test]
+    public async Task LoadAsync_ExistingUsersWithZeroElo_SeedsPeakAndTrough()
+    {
+        var unseeded = new SeasonStats
+        {
+            SeasonId = "season-1",
+            SeasonName = "Spring 2026",
+            Generations = [1, 2],
+            StartedAt = DateTime.UtcNow,
+            Users = new Dictionary<string, UserStats>
+            {
+                ["alice"] = new UserStats { Nick = "alice", Battles = 10, Wins = 8, Losses = 2, Elo = 0 },
+            }
+        };
+        _storageMock.Setup(s => s.LoadAsync("season-1", It.IsAny<CancellationToken>())).ReturnsAsync(unseeded);
+        var sut = new StatsService(_storageMock.Object, _season, NullLogger<StatsService>.Instance);
+        await sut.LoadAsync();
+
+        var alice = sut.GetUserStats("alice")!;
+        Assert.That(alice.PeakElo, Is.EqualTo(alice.Elo));
+        Assert.That(alice.TroughElo, Is.EqualTo(alice.Elo));
+    }
+
     // --- minBattles filter tests ---
 
     [Test]
