@@ -616,7 +616,7 @@ public class IrcService : BackgroundService
             return;
         }
 
-        await SayAsync($"Undefeated: {string.Join(", ", undefeated)}", ct);
+        await SayJoinedAsync("Undefeated: ", undefeated, ct);
     }
 
     private async Task HandlePokeRankAsync(CancellationToken ct)
@@ -628,8 +628,37 @@ public class IrcService : BackgroundService
             return;
         }
 
-        var line = string.Join(", ", all.Select((p, i) => $"{i + 1}. {Capitalise(p.Name)}"));
-        await SayAsync(line, ct);
+        var entries = all.Select((p, i) => $"{i + 1}. {Capitalise(p.Name)}");
+        await SayJoinedAsync(string.Empty, entries, ct);
+    }
+
+    // IRC lines are capped at 512 bytes on the wire; keep well under that so long,
+    // comma-joined lists (e.g. !pokerank) don't get silently truncated by the server.
+    private const int MaxJoinedMessageLength = 400;
+
+    private async Task SayJoinedAsync(string prefix, IEnumerable<string> items, CancellationToken ct)
+    {
+        var sb = new StringBuilder(prefix);
+        var isFirstOnLine = true;
+
+        foreach (var item in items)
+        {
+            var addition = isFirstOnLine ? item : $", {item}";
+            if (!isFirstOnLine && sb.Length + addition.Length > MaxJoinedMessageLength)
+            {
+                await SayAsync(sb.ToString(), ct);
+                sb.Clear();
+                sb.Append(item);
+                isFirstOnLine = false;
+                continue;
+            }
+
+            sb.Append(addition);
+            isFirstOnLine = false;
+        }
+
+        if (sb.Length > 0)
+            await SayAsync(sb.ToString(), ct);
     }
 
     private async Task HandleHelpAsync(CancellationToken ct)

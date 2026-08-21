@@ -757,6 +757,31 @@ public class StatsServiceTests
         Assert.That(alice.TroughElo, Is.EqualTo(alice.Elo));
     }
 
+    [Test]
+    public async Task LoadAsync_LegacyUserWithRealEloButZeroPeakTrough_BackfillsFromCurrentElo()
+    {
+        // Simulates data saved before PeakElo/TroughElo existed: Elo is already seeded (non-zero),
+        // but PeakElo/TroughElo default to 0 because the fields didn't exist yet.
+        var legacy = new SeasonStats
+        {
+            SeasonId = "season-1",
+            SeasonName = "Spring 2026",
+            Generations = [1, 2],
+            StartedAt = DateTime.UtcNow,
+            Users = new Dictionary<string, UserStats>
+            {
+                ["alice"] = new UserStats { Nick = "alice", Battles = 5, Wins = 3, Losses = 2, Elo = 1034, PeakElo = 0, TroughElo = 0 },
+            }
+        };
+        _storageMock.Setup(s => s.LoadAsync("season-1", It.IsAny<CancellationToken>())).ReturnsAsync(legacy);
+        var sut = new StatsService(_storageMock.Object, _season, NullLogger<StatsService>.Instance);
+        await sut.LoadAsync();
+
+        var alice = sut.GetUserStats("alice")!;
+        Assert.That(alice.PeakElo, Is.EqualTo(1034));
+        Assert.That(alice.TroughElo, Is.EqualTo(1034));
+    }
+
     // --- minBattles filter tests ---
 
     [Test]

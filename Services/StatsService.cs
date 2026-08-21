@@ -28,6 +28,7 @@ public class StatsService : IStatsService
         {
             _current = existing;
             SeedEloIfNeeded();
+            BackfillEloRecordsIfNeeded();
             _logger.LogInformation(
                 "Loaded season {SeasonId} with {Count} users",
                 _season.Id, _current.Users.Count);
@@ -185,6 +186,20 @@ public class StatsService : IStatsService
     {
         if (u.Elo > u.PeakElo) u.PeakElo = u.Elo;
         if (u.Elo < u.TroughElo) u.TroughElo = u.Elo;
+    }
+
+    // Data saved before PeakElo/TroughElo existed has both defaulted to 0 — seed them
+    // from the current Elo so "lowest ever" doesn't read as a bogus 0.
+    private void BackfillEloRecordsIfNeeded()
+    {
+        foreach (var u in _current.Users.Values)
+        {
+            if (u.PeakElo == 0 && u.TroughElo == 0 && u.Elo != 0)
+            {
+                u.PeakElo = u.Elo;
+                u.TroughElo = u.Elo;
+            }
+        }
     }
 
     private static int ComputeNewElo(int myElo, int opponentElo, double score)
